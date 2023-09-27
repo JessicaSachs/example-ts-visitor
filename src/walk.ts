@@ -4,9 +4,11 @@ import {
   FunctionDeclaration,
   InterfaceDeclaration,
   ParameterDeclaration,
+  Project,
   PropertySignature,
   SourceFile,
   TypeChecker,
+  ts,
 } from "ts-morph";
 import { pad } from "./utils";
 
@@ -84,16 +86,58 @@ function handleLiterals(
   }
 }
 
-export function walk(
+/**
+ *
+ *  function visitNode(node: ts.Node) {
+        if (ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node)) {
+            for (const member of node.members) {
+                if (ts.isPropertySignature(member) && ts.isIdentifier(member.name) && member.name.text === targetPropertyName) {
+                    const type = checker.getTypeAtLocation(member.type);
+                    if (type.isUnion()) {
+                        unionTypes = type.types.map(t => {
+                            const value = checker.typeToString(t);
+                            return value;
+                        });
+                    }
+                }
+            }
+        }
+
+        ts.forEachChild(node, visitNode);
+    }
+ *
+ */
+
+export function walk(node: ts.Node, checker: TypeChecker, project: Project) {
+  if (ts.isInterfaceDeclaration(node)) {
+    for (const member of node.members) {
+      // What. member.name.text === targetPropertyName
+      if (ts.isPropertySignature(member) && ts.isIdentifier(member.name)) {
+        if (member.type) {
+          if (ts.isUnionTypeNode(member.type)) {
+            const unionTypes = member.type.types.map((t) => {
+              const fileName = t.getSourceFile().fileName;
+              const value = t.getText();
+              return { value, fileName };
+            });
+            console.log(unionTypes);
+          }
+        }
+      }
+    }
+  }
+}
+
+export function walk2(
   declaration: PropertySignature | ExportedDeclarations | SourceFile | ParameterDeclaration,
   checker: TypeChecker,
+  project: Project,
   level: number = 0
 ) {
   const type = declaration.getType();
   const kind = declaration.getKindName();
   if (!isRelevantKind(kind)) return;
 
-  if (declaration instanceof ExportDeclaration || declaration instanceof SourceFile) return;
   const name = declaration.getSymbol()?.getName() || type.getAliasSymbol()?.getName();
   console.log(
     `${pad(level)} KIND: ${kind} - NAME: ${name} - TEXT FROM PARENT: ${type.getText(declaration.getParent())}`
@@ -103,13 +147,13 @@ export function walk(
     console.log(`${pad(level)} interface ${name}`);
     const props = (declaration as InterfaceDeclaration).getProperties();
     props.forEach((property) => {
-      walk(property, checker, level + 1);
+      walk(property, checker, project, level + 1);
     });
   } else if (declaration.getKindName() === "FunctionDeclaration") {
     console.log(`function ${name}`);
     (declaration as FunctionDeclaration).getParameters().forEach((p) => {
       console.log(`${pad(level + 1)} param ${p.getName()} - ${p.getKindName()}`);
-      walk(p, checker, level + 1);
+      walk(p, checker, project, level + 1);
     });
   } else if (declaration.getKindName() === "TypeAliasDeclaration") {
     console.log(`${pad(level + 1)} type ${name}`);
@@ -117,13 +161,13 @@ export function walk(
       const kind = c.getKindName();
       if (!isRelevantKind(kind)) return;
       console.log(`${pad(level + 1)} child ${kind}`);
-      walk(c as ExportedDeclarations, checker, level + 1);
+      walk(c as ExportedDeclarations, checker, project, level + 1);
     });
   } else if (declaration.getKindName() === "PropertySignature") {
     console.log(`${pad(level)} ${name} - property - ${kind}`);
     declaration.getChildren().forEach((c) => {
       // No idea why Node<Node> isn't working
-      walk(c, checker, level + 1);
+      walk(c, checker, project, level + 1);
     });
   } else if (kind === "TypeReference") {
     // I can't figure out how to look up the TypeReferences

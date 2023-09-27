@@ -9,7 +9,7 @@ const input = relative(".", process.argv[2] || join("test", "simple-interface.ts
 console.log(`********** Running typescript-parser **********`);
 console.log(`Loading the file: ${input}`);
 
-const { code, checker } = loadProject(tsconfigPath, input);
+const { code, checker, project } = loadProject(tsconfigPath, input);
 const loadedFilePath = relative(import.meta.dir, code.getFilePath());
 
 console.log(`Loaded project and source file at ${loadedFilePath}`);
@@ -22,6 +22,8 @@ else {
   const allExportedDeclarations = Array.from(exportedDeclarations).map(([name, [declaration]]) => declaration);
 
   // You can go ahead and print this with consoleTable
+  // Yes, consoleTable because console.table is not available in Bun.
+  // https://github.com/oven-sh/bun/issues/802
   const exportedDeclarationsTableData = Array.from(exportedDeclarations).map(([name, [declaration]]) => ({
     name,
     isInterface: declaration.getType().isInterface(),
@@ -33,5 +35,5 @@ else {
   // consoleTable(exportedDeclarationsTableData)
 
   // Start walking from the exported declarations.
-  allExportedDeclarations.forEach((declaration) => walk(declaration, checker));
+  allExportedDeclarations.forEach((declaration) => walk(declaration.compilerNode, checker, project));
 }
